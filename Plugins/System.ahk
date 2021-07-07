@@ -80,17 +80,45 @@ return
 
 TurnMonitorOff:
     ; 关闭显示器:
-    SendMessage, 0x112, 0xF170, 2,, Program Manager
+    Sleep, 200
+    SendMessage, 0x112, 0xF170, 2, , Program Manager
     ; 0x112 is WM_SYSCOMMAND, 0xF170 is SC_MONITORPOWER.
     ; 对上面命令的注释: 使用 -1 代替 2 来打开显示器.
     ; 使用 1 代替 2 来激活显示器的节能模式.
 return
 
 EmptyRecycle:
-    MsgBox, 4, , 将要清空回收站，是否执行？
+    Items := ComObjCreate("Shell.Application").Namespace(10).Items()
+    Text := "回收站中共有 " . Items.Count() . " 项 （取消可以管理回收站文件）：`n`n"
+
+    Lines := 0
+    For F in Items {
+        if (Lines >= 30) {
+            Text .= "……`n"
+            break
+        }
+
+        Lines += 1
+
+        Text .= F.Name . " （" . (F.IsFolder == 0 ? F.Size . " 字节）" : "目录）") . "`n"
+    }
+
+    if (Lines == 0) {
+        MsgBox, , , 回收站是空的，将自动关闭, 0.5
+        return
+    }
+
+    MsgBox, 3, , % Text . "`n将要清空回收站，是否执行？"
+
     IfMsgBox Yes
     {
-        FileRecycleEmpty,
+        FileRecycleEmpty
+        return
+    }
+
+    IfMsgBox Cancel
+    {
+        Run, explorer.exe ::{645ff040-5081-101b-9f08-00aa002f954e}
     }
 return
 
@@ -117,13 +145,15 @@ DiskSpace:
         drive := A_LoopField ":"
         DriveGet, label, label, %drive%
         DriveGet, cap, capacity, %drive%
-        DrivespaceFree, free, %drive%
-        SetFormat, float, 5.2
-        percent := 100 * (cap - free) / cap
-        SetFormat, float, 6.2
+        DriveSpaceFree, free, %drive%
+        used := cap - free
+        ;SetFormat, float, 5.2
+        ;percent := 100 * (cap - free) / cap
+        SetFormat, float, 7.2
         cap /= 1024.0
         free /= 1024.0
-        result = %result%* | %drive% | 总共: %cap% G  可用: %free% G | 已使用：%percent%`%  卷标: %label%`n
+        used /= 1024.0
+        result = %result%* | %drive% | 总共: %cap% G  可用: %free% G | 已用：%used%  卷标: %label%`n
     }
 
     DisplayResult(AlignText(result))

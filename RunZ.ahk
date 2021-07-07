@@ -1,6 +1,7 @@
 ﻿#NoEnv
 #SingleInstance, Force
 #NoTrayIcon
+#MaxHotkeysPerInterval 200
 
 FileEncoding, utf-8
 SendMode Input
@@ -61,8 +62,6 @@ global g_CurrentInput
 global g_CurrentCommand
 ; 当前匹配到的所有命令
 global g_CurrentCommandList
-; 每使用 tcmatch.dll 搜索多少次后重载一次，因为 tcmatch.dll 有内存泄漏
-global g_ReloadTCMatchInternal := g_Conf.Config.ReloadTCMatchInternal
 ; 是否启用 TCMatch
 global g_EnableTCMatch = TCMatchOn(g_Conf.Config.TCMatchPath)
 ; 列表第一列的首字母或数字
@@ -131,7 +130,7 @@ if (g_SkinConf.ShowTrayIcon)
 {
     Menu, Tray, Icon
     Menu, Tray, NoStandard
-    if (!g_Conf.Config.ExitIfInactivate)
+    if (g_Conf.Config.RunInBackground)
     {
         Menu, Tray, Add, 显示 &S, ActivateRunZ
         Menu, Tray, Default, 显示 &S
@@ -290,11 +289,6 @@ for key, label in g_Conf.Hotkey
 
 Hotkey, IfWinActive
 
-if (g_Conf.Config.EnableGlobalMenu)
-{
-    HotKey, #RButton, GlobalMenu
-}
-
 for key, label in g_Conf.GlobalHotkey
 {
     if (label != "Default")
@@ -368,6 +362,7 @@ return
 
 ActivateRunZ:
     Gui, Show, , % g_WindowName
+
     if (g_Conf.Config.SwitchToEngIME)
     {
         SwitchToEngIME()
@@ -379,6 +374,8 @@ ActivateRunZ:
 
         if (WinActive(g_WindowName))
         {
+            ControlFocus, %g_InputArea%
+            Send, ^a
             break
         }
 
@@ -736,8 +733,9 @@ return
 ProcessInputCommand:
     ControlGetText, g_CurrentInput, %g_InputArea%
     ; https://github.com/goreliu/runz/issues/40
-    GoSub, ProcessInputCommandCallBack
-    return
+    ; 但如果改了这个，快速输入的话，搜索结果可能不更新
+    ;GoSub, ProcessInputCommandCallBack
+    ;return
 
     ; 如果使用异步的方式，TurnOnResultFilter 后会出问题，先绕一下
     if (SubStr(g_CurrentInput, 0, 1) == " ")
@@ -1725,23 +1723,20 @@ WM_ACTIVATE(wParam, lParam)
     }
     else if (wParam <= 0) ; 窗口非激活
     {
-        SetTimer, ToExit, 50
+        ; 这样有可能第一次显示主界面时，窗口失去焦点后不关闭
+        ; 暂时没有好的解决方法，如果改用 SetTimer 调用，会导致用快捷键显示主窗口失败
+
+		if (!WinExist("RunZ.ahk"))
+		{
+			if (!g_Conf.Config.KeepInputText)
+			{
+				ControlSetText, %g_InputArea%, , %g_WindowName%
+			}
+
+			GoSub, HideOrExit
+		}
     }
 }
-
-ToExit:
-    if (!WinExist("RunZ.ahk"))
-    {
-        if (!g_Conf.Config.KeepInputText)
-        {
-            ControlSetText, %g_InputArea%, , %g_WindowName%
-        }
-
-        GoSub, HideOrExit
-    }
-
-    SetTimer, ToExit, Off
-return
 
 KeyHelpText()
 {
@@ -1842,7 +1837,7 @@ AlignText(text)
         hasCol2 := true
         Loop, Parse, text, `n, `r
         {
-            if (SubStr(text, 3, 1) != "|" || SubStr(text, 8, 1) != "|")
+            if (SubStr(A_LoopField, 3, 1) != "|" || SubStr(A_LoopField, 8, 1) != "|")
             {
                 hasCol2 := false
                 break
@@ -2027,7 +2022,6 @@ return
 #include %A_ScriptDir%\Lib\EasyIni.ahk
 #include %A_ScriptDir%\Lib\TCMatch.ahk
 #include %A_ScriptDir%\Core\Common.ahk
-#include %A_ScriptDir%\Core\GlobalMenu.ahk
 #include *i %A_ScriptDir%\Core\Plugins.ahk
 ; 发送到菜单自动生成的命令
 #include *i %A_ScriptDir%\Conf\UserFunctionsAuto.txt
